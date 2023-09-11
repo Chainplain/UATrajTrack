@@ -3,7 +3,7 @@
 ### most variable if possible are in the form of np.matrix
 import numpy as np
 from   scipy.spatial.transform import Rotation
-
+from   FilterLib import Low_Pass_Second_Order_Filter as LPSF
 EXTREME_SMALL_NUMBER_4_ROTATION_COMPUTATION = 0.00000000001
 
 class Finite_time_slide_mode_observer_3dim():  
@@ -56,6 +56,98 @@ class Under_Traj_Track_Controller():
         self. K_p  = 1 * np.matrix([[1,0,0],\
                                    [0,1,0],\
                                    [0,0,1]])
+        self. K_v  = 1 * np.matrix([[1,0,0],\
+                                   [0,1,0],\
+                                   [0,0,1]])
+        self. K_p_inv = np.linalg.inv (self. K_p)
+
+        self. k_tf_inv_multi_m = 1
+        
+        self. k_dx_in_V = 0.1 
+        """This coefficient is based on experiment. \n 
+        Corresponding to the resistance force. This coef can be set small in case of unintended behavior."""
+
+        self. delta = 0.1
+        """This coefficient is related to the hysteretic term. \n 
+        No larger than 1, better set less than 0.2 ."""
+
+        self. k_psi = 1
+        self. k_Gamma1 = 1
+        self. k_Gamma2 = 1
+        self. k_omega = 1
+        self. Zero_3 = np.matrix([[0.0],[0.0],[0.0]])
+        self. v_d_filter = LPSF(self. Zero_3, 8, 0.8, con_gap)
+        self. psi_d_filter = LPSF(0, 8, 0.8, con_gap)
+        self. omega_psi_d_filter = LPSF(0, 8, 0.8, con_gap)
+
+        self. gravitional_acc = 9.8
+
+        self. h_psi = 0
+        ### Follows are the output values.
+        self. f_flap_2 = 0
+        self. Gamma_xp = 0
+        self. Gamma_yp = 0
+        self. Gamma_zp = 1
+
+    def Calc_u_t(self, p_r, p, v_r, v, psi, omega_psi ):
+        e_p = p_r - p
+        v_d = v_r + self. K_p * np.tanh (e_p)
+        e_v = v_d - v
+
+        R_psi = np.mat( [[np.cos(psi), -np.sin(psi),          0],\
+                         [np.sin(psi),  np.cos(psi),          0],\
+                         [          0,            0,          1]])
+        V_v = R_psi.T * v
+
+        V_v_x = V_v[0, 0]
+        # V_v_y = V_v[1, 0]
+        # V_v_z = V_v[2, 0]
+
+        self. v_d_filter.march_forward(v_d)
+        d_v_d = self. v_d_filter.Get_filtered_D()
+        a_d = d_v_d +self. K_v * self. K_p_inv * np.tanh (e_p) + self. K_v * np.tanh(e_v)
+
+        a_xd = a_d[0,0]
+        a_yd = a_d[1,0]
+        a_zd = a_d[2,0]
+
+        psi_d = np.arctan2( a_yd, a_xd)
+        V_d_v_xd = np.sqrt( a_xd * a_xd + a_yd * a_yd)
+        V_d_v_zd = a_zd
+
+        d_v_cx = V_d_v_xd +  self. k_dx_in_V * np.sign(V_v_x) * V_v_x * V_v_x
+        d_v_cz = V_d_v_zd + self. gravitional_acc
+
+        d_v_magnitude = np.sqrt ( d_v_cx * d_v_cx + d_v_cz * d_v_cz) + EXTREME_SMALL_NUMBER_4_ROTATION_COMPUTATION
+        self. f_flap_2 = self. k_tf_inv_multi_m * d_v_magnitude
+
+        Gamma_xd = d_v_cx / d_v_magnitude
+        Gamma_zd = d_v_cz / d_v_magnitude
+
+        delta_psi = psi_d - psi
+
+        if np.cos( delta_psi ) > 0:
+            self. h_psi = np.sign ( np.sin( delta_psi ) )
+        
+        if np.cos( delta_psi ) <= 0 and self. h_psi * np.sin( delta_psi ) <= - self. delta:
+            self. h_psi = np.sign ( np.sin( delta_psi ) )
+
+        self. psi_d_filter. march_forward(psi_d)
+        d_psi_d = self. psi_d_filter.Get_filtered_D()
+
+        self. omega_psi_d_filter. march_forward (d_psi_d)
+
+        omega_psi_d = self. omega_psi_d_filter.Get_filtered() + self. k_psi * self. h_psi * np. sqrt( 1 - np.cos( delta_psi))
+
+        Gamma_yd = self. k_Gamma1 * np.sign(omega_psi_d - omega_psi) * np.abs ( 0.5 * self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
+                 + self. k_Gamma2 *   ( 0.5 *  self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
+                 + self.k_omega * ( omega_psi_d - omega_psi )
+
+        Gamma_magnitude = np.sqrt ( Gamma_xd * Gamma_xd + Gamma_yd * Gamma_yd + Gamma_zd * Gamma_zd) + EXTREME_SMALL_NUMBER_4_ROTATION_COMPUTATION
+        self. Gamma_xp = Gamma_xd / Gamma_magnitude 
+        self. Gamma_yp = Gamma_yd / Gamma_magnitude 
+        self. Gamma_zp = Gamma_zd / Gamma_magnitude 
+
 
 class Positional_Traj_Track_Controller():
     def __init__(self, robot_mass, con_gap, g = 9.8):
