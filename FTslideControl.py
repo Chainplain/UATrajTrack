@@ -53,6 +53,7 @@ class Finite_time_slide_mode_observer_3dim():
 
 class Under_Traj_Track_Controller():
     def __init__(self, con_gap):
+        self. Control_gap = con_gap
         self. K_p  = 1 * np.matrix([[1,0,0],\
                                    [0,1,0],\
                                    [0,0,1]])
@@ -64,12 +65,16 @@ class Under_Traj_Track_Controller():
         self. k_tf_inv_multi_m = 1
         
         self. k_dx_in_V = 0.1 
-        """This coefficient is based on experiment. \n 
-        Corresponding to the resistance force. This coef can be set small in case of unintended behavior."""
+        """
+        This coefficient is based on experiment. \n 
+        Corresponding to the resistance force. This coef can be set small in case of unintended behavior.
+        """
 
         self. delta = 0.1
-        """This coefficient is related to the hysteretic term. \n 
-        No larger than 1, better set less than 0.2 ."""
+        """
+        This coefficient is related to the hysteretic term. \n 
+        No larger than 1, better set less than 0.2 .
+        """
 
         self. k_psi = 1
         self. k_Gamma1 = 1
@@ -147,6 +152,25 @@ class Under_Traj_Track_Controller():
         self. Gamma_xp = Gamma_xd / Gamma_magnitude 
         self. Gamma_yp = Gamma_yd / Gamma_magnitude 
         self. Gamma_zp = Gamma_zd / Gamma_magnitude 
+
+class Simplified_Att_Controller():
+    def __init__(self, con_gap):
+        self. Control_gap = con_gap
+        self. k_rud = 1
+        self. k_ele = 1
+        self. k_rud_omega = 1
+        self. k_ele_omega = 1
+        
+        self. theta_rud = 0
+        self. theta_ele = 0
+
+    def Calc_u (self, Gamma_p, Gamma, Omega):
+        # Gamma_p_list = list (Gamma_p_list)
+        self. theta_rud = self. k_rud * ( Gamma_p[1,0] * Gamma[2,0] - Gamma_p[2,0] * Gamma[1,0] )\
+                            - self. k_rud_omega * Omega[0,0]
+        
+        self. theta_ele = self. k_ele * ( Gamma_p[2,0] * Gamma[0,0] - Gamma_p[0,0] * Gamma[2,0] )\
+                            - self. k_ele_omega * Omega[1,0]
 
 
 class Positional_Traj_Track_Controller():

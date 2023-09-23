@@ -8,13 +8,18 @@ import numpy as np
 import serial
 import threading
 
-from   SpecialorthogonalControl import SO_3_controller as SOC
+# from   SpecialorthogonalControl import SO_3_controller as SOC
 from   FilterLib import Low_Pass_Second_Order_Filter as LPSF
 from   FilterLib import FIR_Filter
 from   FTslideControl import Finite_time_slide_mode_observer_3dim as FT_observer
 from   FTslideControl import Positional_Traj_Track_Controller as  PTTC
 from   FTslideControl import Computing_desired_rotation
-from   FTslideControl import Attitude_reference_generator as ARG
+# from   FTslideControl import Attitude_reference_generator as ARG
+
+from   FTslideControl import Under_Traj_Track_Controller as UTT_controller
+from   FTslideControl import Simplified_Att_Controller as SA_controller
+
+
 from   QualisysConnector import Qualisys_con
 from   SerialTRAN import Serial_transmit_multi_protocol as STM
 from   RotationComputation import FromEuler_Angle_in_Rad2Rotation as E2R
@@ -59,21 +64,19 @@ Zero_av = np.matrix([[0.0],[0.0],[0.0]])
 
 Z_pos_Int = 0
 
+psi = 0
 
 ### Classes Initialization
 Here_pos_observer = FT_observer(robot_mass = Flapper_Robot_Mass)
 Here_pos_observer. observer_gap = Sensor_gap
 
-SO3_Attitude_Controller = SOC()
-SO3_Attitude_Controller.time_step = Controller_gap
 
-Here_ARG = ARG()
-Here_ARG. generator_gap_AV          = Controller_gap
-Here_ARG. generator_gap_rotation    = Sensor_gap
+Postion_Controller = UTT_controller( Desired_Controller_gap )
+Postion_Controller. Control_gap = Controller_gap
 
+Attitude_Controller = SA_controller(Desired_Controller_gap)
+Attitude_Controller. Control_gap = Controller_gap
 
-Postion_Controller = PTTC(Flapper_Robot_Mass, Desired_Controller_gap)
-Postion_Controller.Control_gap = Controller_gap
 
 Flapper_att_filter = FIR_Filter(Identical_rot, [1] * 20, Desired_Sensor_gap)
 Flapper_pos_filter = FIR_Filter(Zero_av, [1] * 5, Desired_Sensor_gap)
@@ -82,6 +85,9 @@ Flapper_pos_filter = FIR_Filter(Zero_av, [1] * 5, Desired_Sensor_gap)
 Flapper_av_filter = FIR_Filter(Zero_av, [1] * 20, Desired_Sensor_gap)
 
 Angular_velocity_filter = LPSF(Zero_av, 8, 0.8, Desired_Sensor_gap)
+
+Flapper_psi_filter = LPSF(0, 8, 0.8, Desired_Sensor_gap)
+
 
 TCP_IP = '192.168.1.142'
 UDP_IP_port = ('192.168.1.147', 6666)
@@ -153,6 +159,7 @@ p_d = np.mat([  [0.0], [0.0], [0.0]])
 u_t = np.mat([  [0.0], [0.0], [0.0]])
 Flapper_pos = np.mat([  [0.0], [0.0], [0.0]])
 Flapper_att = np.mat([  [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
+Flapper_psi = 0
 
 Last_pos = np.mat([  [0.0], [0.0], [0.0]])
 Last_att = np.mat([  [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
@@ -231,22 +238,23 @@ def Sensoring():
         Flapper_att = E2R(np.deg2rad(Sensor_data[3:6]))
         Flapper_att_filter.march_forward(Flapper_att)
         Flapper_att = Flapper_att_filter.Get_filtered()
-
-        # print('Flapper_att_filtered', Flapper_att)
-        # print('Flapper_att_filter.Get_filtered:', Flapper_att_filter.Get_filtered())
         Flapper_att = Normalize_Rot_Mat_Safe(Flapper_att)
 
+        e_13 = np.mat([[1],[0],[1]])
+
+        Pi = Flapper_att * e_13
+
+        Flapper_psi = np.arctan2(Pi[0,0], Pi[1,0])
+        Flapper_psi_filter.march_forward(Flapper_psi)
+
         if is_fall_flag and \
-            0.5 < Flapper_pos[2, 0] < 2 and \
+           0.5 < Flapper_pos[2, 0] < 2 and \
             -2 < Flapper_pos[1, 0] < 2 and \
             -2 < Flapper_pos[0, 0] < 2:
             is_fall_flag = False
 
         if Flapper_pos[2, 0] < 0.3 or Flapper_pos[2, 0] > 2:
             is_fall_flag = True
-
-        # if here_qualisys_con.loop_delay > 20:
-        #     is_fall_flag = True
 
         if Flapper_pos[1, 0] < -3 or Flapper_pos[1, 0] > 3:
             is_fall_flag = True
@@ -255,29 +263,6 @@ def Sensoring():
             is_fall_flag = True
 
 
-
-
-
-
-
-        # if here_qualisys_con.loop_delay > 20:
-        #         is_fall_flag = True
-        # else:
-        #         if here_qualisys_con.loop_delay < 10:
-        #                 is_fall_flag = False
-
-        # if Flapper_pos[0,0] > 2 or Flapper_pos[0,0] > -2:
-        #         is_fall_flag = True
-        # else:
-        #         if Flapper_pos[0,0] < 1.8 and Flapper_pos[0,0] > -1.8:
-        #                 is_fall_flag = False
-        #
-        # if Flapper_pos[1, 0] > 2 or Flapper_pos[1, 0] > -2:
-        #     is_fall_flag = True
-        # else:
-        #     if Flapper_pos[1, 0] < 1.8 and Flapper_pos[1, 0] > -1.8:
-        #         is_fall_flag = False
-
         Flapper_Angular_velocity_current = RD2AV(Last_att, Flapper_att, Sensor_gap)
 
         Flapper_av_filter.march_forward( Flapper_Angular_velocity_current )
@@ -285,12 +270,12 @@ def Sensoring():
         Angular_velocity_filter.march_forward(Flapper_Angular_velocity_temp)
         # print('Flapper_Angular_velocity_current', Flapper_Angular_velocity_current)
         # print('Flapper_Angular_velocity_current filtered', Angular_velocity_filter.Get_filtered())
-        Last_att    = Flapper_att
+        Last_att  =  Flapper_att
 
         u_t_in_body_fixed_frame = np.mat([[0], [0], [Flapper_Robot_Mass * 9.8]])
         u_t_in_inertia_frame = Flapper_att * u_t_in_body_fixed_frame
         Here_pos_observer.march_forward(u_t_in_inertia_frame, Flapper_pos)
-        Here_ARG.match_forward_rotation()
+
 
         sensoring_count += 1
 
@@ -326,34 +311,20 @@ def Controlling():
         v_d = np.mat([[0], [0], [0]])
         d_v_d = np.mat([[0], [0], [0]])
 
-        # Flight_direction = np.mat([[v_d_x], [v_d_y], [0]])
-        Flight_direction = np.mat([[1], [0], [0]])
 
         Angle_vel = Angular_velocity_filter.Get_filtered()
 
-        u_t = Postion_Controller.Calc_u_t(p_d, Flapper_pos_filter.Get_filtered(),
-                                          v_d, Here_pos_observer.v_observer,
-                                          d_v_d, Here_pos_observer.z_observer,
-                                          Flapper_att)
+        Postion_Controller.Calc_u_t(p_d, Flapper_pos_filter.Get_filtered(),
+                                    v_d, Here_pos_observer.v_observer,
+                                    Flapper_psi_filter.Get_filtered(),Flapper_psi_filter.Get_filtered_D())
+        
+        GammaP =  np.mat([Postion_Controller.Gamma_xp,
+                          Postion_Controller.Gamma_yp,
+                          Postion_Controller.Gamma_zp]).T
+        Gamma = Flapper_att * np.mat([0,0,1]).T
+        
+        Attitude_Controller.Calc_u(GammaP, Gamma, Flapper_av_filter.Get_filtered())
 
-
-        R_d = Computing_desired_rotation(u_t, Torward_direction, Flight_direction)
-
-        Here_ARG.match_forward_angular_velcoity(R_d)
-
-        # print('Here_ARG.Omega_f', Here_ARG.Omega_f)
-        # SO3_Attitude_Controller. Generate_control_signal( Flapper_att, Angle_vel,
-        #                                  R_d, Here_ARG.Omega_f)
-        R_ident= np.mat([[1.0, 0.0, 0.0],[0.0, 1.0, 0.0],[0.0, 0.0, 1.0]])
-
-        Here_ATG. march_forward(Here_ATG. orientation, Here_ATG. omega)
-        # R_rot_Y_20_deg = np.mat([[0.9396926, 0.0000000, 0.3420202],
-        #                          [0.0000000, 1.0000000, 0.0000000],
-        #                          [-0.3420202, 0.0000000, 0.9396926]])
-        A_zero = np.mat([[ 0.0], [0.0], [0.0]])
-        # print('Here_ATG. orientation:',Here_ATG. orientation)
-        SO3_Attitude_Controller. Generate_control_signal( Flapper_att, Angle_vel,
-                                        Here_ATG. orientation, Zero_av)
 
         K_p_throttle_com = 3
         K_d_throttle_com = 0.5
@@ -378,14 +349,11 @@ def Controlling():
         if throttle_com < -0.2:
             throttle_com = -0.2
 
-        # throttle_com = 1 / 9.8 * np.linalg.norm (u_t)
-        # roll_com  = K_roll * SO3_Attitude_Controller.u[0,0]
-        # pitch_com = K_pitch * SO3_Attitude_Controller.u[1,0]
-        # yaw_com   = K_yaw * SO3_Attitude_Controller.u[2,0]
 
-        yaw_com  =  K_yaw * SO3_Attitude_Controller.u[0,0] 
-        pitch_com =  K_pitch * SO3_Attitude_Controller.u[1,0] 
-        roll_com   =  K_roll * SO3_Attitude_Controller.u[2,0] 
+        yaw_com  =  0
+        pitch_com =  K_pitch * Attitude_Controller.theta_ele
+        roll_com   =  K_roll  * Attitude_Controller.theta_rud
+
         if yaw_com > 1:
             yaw_com = 1
         if yaw_com < -1:
@@ -400,33 +368,6 @@ def Controlling():
             roll_com = 1
         if roll_com < -1:
             roll_com = -1
-
-        K_att_I = 0.1
-
-        yaw_Int += yaw_com * K_att_I
-        pitch_Int += pitch_com * K_att_I
-        roll_Int += roll_com * K_att_I
-
-        I_att_sat = 0.1
-
-        if yaw_Int > I_att_sat:
-            yaw_Int = I_att_sat
-        if yaw_Int < -I_att_sat:
-            yaw_Int = -I_att_sat
-
-        if pitch_Int > I_att_sat:
-            pitch_Int = I_att_sat
-        if pitch_Int < -I_att_sat:
-            pitch_Int = -I_att_sat
-
-        if roll_Int > I_att_sat:
-            roll_Int = I_att_sat
-        if roll_Int < -I_att_sat:
-            roll_Int = -I_att_sat
-
-     
-
-
 
         controlling_count += 1
 
@@ -526,11 +467,6 @@ def Analyzing():
         print('INFO:Sensor_gap: '+ str(Sensor_gap) + ', Controller_gap: '+ str(Controller_gap) +\
               ', Distribute_gap: ' + str(Distribute_gap))
         # print('Angular_velocity_filter',Angular_velocity_filter.Get_filtered())
-
-        SO3_Attitude_Controller.time_step = Controller_gap
-
-        Here_ARG.generator_gap_AV = Controller_gap
-        Here_ARG.generator_gap_rotation = Sensor_gap
 
         Postion_Controller.Control_gap = Controller_gap
         Here_pos_observer.observer_gap = Sensor_gap
