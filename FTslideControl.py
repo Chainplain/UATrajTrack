@@ -93,6 +93,8 @@ class Under_Traj_Track_Controller():
         self. Gamma_xp = 0
         self. Gamma_yp = 0
         self. Gamma_zp = 1
+        self. max_abs_Gamma_x = 0.3
+        self. max_abs_Gamma_y = 0.3
 
     def Calc_u_t(self, p_r, p, v_r, v, psi, omega_psi ):
         e_p = p_r - p
@@ -127,7 +129,10 @@ class Under_Traj_Track_Controller():
         self. f_flap_2 = self. k_tf_inv_multi_m * d_v_magnitude
 
         Gamma_xd = d_v_cx / d_v_magnitude
-        Gamma_zd = d_v_cz / d_v_magnitude
+        if abs(Gamma_xd) > self. max_abs_Gamma_x:
+            Gamma_xd = self. max_abs_Gamma_x * np.sign(Gamma_xd)
+
+        Gamma_zd = np.sqrt(1 - Gamma_xd**2)
 
         delta_psi = psi_d - psi
 
@@ -147,6 +152,8 @@ class Under_Traj_Track_Controller():
         Gamma_yd = self. k_Gamma1 * np.sign(omega_psi_d - omega_psi) * np.abs ( 0.5 * self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
                  + self. k_Gamma2 *   ( 0.5 *  self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
                  + self.k_omega * ( omega_psi_d - omega_psi )
+        if abs(Gamma_yd) > self. max_abs_Gamma_y:
+            Gamma_yd = self. max_abs_Gamma_y * np.sign(Gamma_yd)
 
         Gamma_magnitude = np.sqrt ( Gamma_xd * Gamma_xd + Gamma_yd * Gamma_yd + Gamma_zd * Gamma_zd) + EXTREME_SMALL_NUMBER_4_ROTATION_COMPUTATION
         self. Gamma_xp = Gamma_xd / Gamma_magnitude 
@@ -156,10 +163,10 @@ class Under_Traj_Track_Controller():
 class Simplified_Att_Controller():
     def __init__(self, con_gap):
         self. Control_gap = con_gap
-        self. k_rud = 1
-        self. k_ele = 1
-        self. k_rud_omega = 1
-        self. k_ele_omega = 1
+        self. k_rud = 4
+        self. k_ele = 4
+        self. k_rud_omega = 0.5
+        self. k_ele_omega = 0.5
         
         self. theta_rud = 0
         self. theta_ele = 0

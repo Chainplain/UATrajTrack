@@ -4,16 +4,18 @@ import matplotlib.pyplot as plt
 from readTraj import traj_reader as TR
 # Load the .mat file
 mat_data = scipy.io.loadmat('way_point.mat')
-
-aa = TR('way_point.mat')
-Time = np.linspace(0, 11.99, 200)
-y_vel_here = []
+#  wall_obstraction.mat
+#  ball_obstraction_hcr_pi.mat
+aa = TR('ball_obstraction_hcr_pi.mat')
+Time = np.linspace(0, 13, 200)
+x_pos_here = []
 for tau in Time:
-    y_vel_here.append(aa.get_y_vel(tau))
-plt.plot(Time, y_vel_here)
+    x_pos_here.append(aa.get_y_vel(tau))
+plt.plot(Time, x_pos_here)
 plt.title('Plot of v(x)')
 plt.show()
 
+print('Total_time:',aa.Total_time)
 # Access the variables in the .mat file
 # Coefs = mat_data['coef'].flatten().tolist()
 

@@ -12,10 +12,12 @@ class traj_reader():
         Coefs = mat_data['coef'].flatten().tolist()
         TimePerSeg = mat_data['T'].flatten().tolist()
         self. time_per_seg = TimePerSeg[0]
-        print('self. time_per_seg', self. time_per_seg)
+        
 
         Coefs_num = len(Coefs)
         self. segments_num = int(np.ceil(Coefs_num / (poly_order + 1) / dim))
+
+        self. Total_time = self. time_per_seg * self. segments_num
 
         coef_mul = [i for i in range(poly_order, -1, -1)]
         coef_mul_high = coef_mul[1:]
@@ -84,56 +86,55 @@ class traj_reader():
             self.az_funs. append(az_traj)
     
     def get_x_pos(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
-        print('seg_no',seg_no)
         return self.x_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_y_pos(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.y_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_z_pos(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.z_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_x_vel(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.vx_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_y_vel(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.vy_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_z_vel(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.vz_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_x_acc(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.ax_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_y_acc(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.ay_funs[seg_no](time - self. time_per_seg * seg_no)
     
     def get_z_acc(self, time):
-        if (time < 0) or (time > self. time_per_seg  * self. segments_num):
+        if (time < 0) or (time >= self. time_per_seg  * self. segments_num):
             return None
         seg_no = int(np.floor(time / self. time_per_seg))
         return self.az_funs[seg_no](time - self. time_per_seg * seg_no)

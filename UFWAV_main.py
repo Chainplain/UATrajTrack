@@ -103,22 +103,20 @@ here_qualisys_con. start_listening()
 # we have to use multithread reading,
 # instead of waiting for data.
 
-leftwing_dorsal_PWM = 900
-leftwing_vental_PWM = 2100
-leftwing_channel    = 1
+
 ### in the real RC channel is 1, always plus 1, these value should be checked by real experiment.
 
-rightwing_dorsal_PWM = 900
-rightwing_vental_PWM = 2100
-rightwing_channel    = 3
+ele_dorsal_PWM = 900
+ele_vental_PWM = 2100
+ele_channel    = 1
 
-flap_max_PWM = 900
-flap_min_PWM = 2100
+flap_max_PWM = 1000
+flap_min_PWM = 2000
 flap_channel    = 2
 
 rudder_left_PWM = 2100
 rudder_right_PWM = 900
-rudder_channel    = 0
+rudder_channel    = 3
 
 
 MultiProtocol_ser = serial.Serial(
@@ -129,8 +127,8 @@ MultiProtocol_ser = serial.Serial(
         bytesize=serial.EIGHTBITS
     )
 
-K_roll = 0.5
-K_pitch = 0.5
+K_roll = 0.3
+K_pitch = 0.3
 K_yaw = 1
 
 #distributing
@@ -187,6 +185,7 @@ record_Observer_v_list = []
 record_Observer_z_list = []
 record_u_t_list = []
 record_orientation_list = []
+record_Gamma = []
 
 Here_ATG = ATG(R_d, omega_d, Desired_Controller_gap)
 
@@ -230,14 +229,18 @@ def Warm_up_vehicle():
 def Sensoring():
         global Flapper_pos, Flapper_att, Last_pos, Last_att, Sensor_data, throttle_com, sensoring_count, is_fall_flag
         Sensor_data = here_qualisys_con. read_6DEuler_LittleEndian()
-        Flapper_pos = Millimeter2Meter_CONSTANT * np.mat([[Sensor_data[0]], [Sensor_data[1]], [Sensor_data[2]]])
-        Flapper_pos_filter.march_forward(Flapper_pos)
-        Flapper_pos = Flapper_pos_filter.Get_filtered()
+        Flapper_pos_origin = Millimeter2Meter_CONSTANT * np.mat([[Sensor_data[0]], [Sensor_data[1]], [Sensor_data[2]]])
+        Flapper_pos_filter.march_forward(Flapper_pos_origin)
+        Flapper_pos = Flapper_pos_origin
+        # here we use the original signal instead of the filtered one, to test
+        # if there is something wrong in the filter
 
 
-        Flapper_att = E2R(np.deg2rad(Sensor_data[3:6]))
+        Flapper_att_origin = E2R(np.deg2rad(Sensor_data[3:6]))
         Flapper_att_filter.march_forward(Flapper_att)
         Flapper_att = Flapper_att_filter.Get_filtered()
+        Flapper_att = Flapper_att_origin# here we use the original signal instead of the filtered one
+
         Flapper_att = Normalize_Rot_Mat_Safe(Flapper_att)
 
         e_13 = np.mat([[1],[0],[1]])
@@ -253,13 +256,13 @@ def Sensoring():
             -2 < Flapper_pos[0, 0] < 2:
             is_fall_flag = False
 
-        if Flapper_pos[2, 0] < 0.3 or Flapper_pos[2, 0] > 2:
+        if Flapper_pos[2, 0] < 0.2 or Flapper_pos[2, 0] > 2:
             is_fall_flag = True
 
-        if Flapper_pos[1, 0] < -3 or Flapper_pos[1, 0] > 3:
+        if Flapper_pos[1, 0] < -5 or Flapper_pos[1, 0] > 5:
             is_fall_flag = True
 
-        if Flapper_pos[0, 0] < -3 or Flapper_pos[0, 0] > 5:
+        if Flapper_pos[0, 0] < -3 or Flapper_pos[0, 0] > 3:
             is_fall_flag = True
 
 
@@ -283,7 +286,7 @@ def Controlling():
         # Circular Flight
         global throttle_com, roll_com, pitch_com, yaw_com,\
             roll_Int, pitch_Int, yaw_Int,\
-            controlling_count, R_d, p_d, Angle_vel, u_t, Z_pos_Int
+            controlling_count, R_d, p_d, Angle_vel, u_t, Z_pos_Int, Gamma
         current_stamp = time.time()
 
         # k_rate = 1
@@ -292,7 +295,7 @@ def Controlling():
         # v_d_z = 0
         # d_v_d_z = 0
         #
-        # Here_time = current_stamp - start_stamp
+        Here_time = current_stamp - start_stamp
         #
         # p_d_x = - k_rate * np.cos(np.pi * t_rate * Here_time) + k_rate
         # p_d_y = k_rate * np.sin(np.pi * t_rate * Here_time)
@@ -309,25 +312,31 @@ def Controlling():
 
         p_d = np.mat([[0], [0], [1.5]])
         v_d = np.mat([[0], [0], [0]])
-        d_v_d = np.mat([[0], [0], [0]])
+  
 
 
         Angle_vel = Angular_velocity_filter.Get_filtered()
 
-        Postion_Controller.Calc_u_t(p_d, Flapper_pos_filter.Get_filtered(),
+        Postion_Controller.Calc_u_t(p_d, Flapper_pos,
                                     v_d, Here_pos_observer.v_observer,
                                     Flapper_psi_filter.Get_filtered(),Flapper_psi_filter.Get_filtered_D())
         
         GammaP =  np.mat([Postion_Controller.Gamma_xp,
                           Postion_Controller.Gamma_yp,
                           Postion_Controller.Gamma_zp]).T
-        Gamma = Flapper_att * np.mat([0,0,1]).T
+        
+        Gamma = Flapper_att.T * np.mat([0,0,1]).T
+
+        
+        
+        GammaP = np.mat([0,0.4,1]).T # This line is used for testing the pure reduced attitude controller
+        GammaP = 1 / np.linalg.norm(GammaP) * GammaP
         
         Attitude_Controller.Calc_u(GammaP, Gamma, Flapper_av_filter.Get_filtered())
 
 
-        K_p_throttle_com = 3
-        K_d_throttle_com = 0.5
+        K_p_throttle_com = 0.6
+        K_d_throttle_com = 1.2
         K_i_throttle_com = 0.1
         I_sat = 0.2
 
@@ -336,23 +345,23 @@ def Controlling():
         if Z_pos_Int < -I_sat:
             Z_pos_Int = -I_sat
 
-        throttle_com = (p_d[2, 0] - Flapper_pos_filter.Get_filtered()[2, 0]) * K_p_throttle_com\
+        throttle_com = (p_d[2, 0] - Flapper_pos[2, 0]) * K_p_throttle_com\
                        + (v_d[2, 0] - Here_pos_observer.v_observer[2, 0] ) * K_d_throttle_com +\
                        Z_pos_Int * K_i_throttle_com
         
-        Z_pos_Int += (p_d[2, 0] - Flapper_pos_filter.Get_filtered()[2, 0]) * Controller_gap
+        Z_pos_Int += (p_d[2, 0] - Flapper_pos[2, 0]) * Controller_gap
 
        
 
         if throttle_com > 1:
             throttle_com = 1
-        if throttle_com < -0.2:
-            throttle_com = -0.2
+        if throttle_com < 0:
+            throttle_com = 0
 
 
         yaw_com  =  0
         pitch_com =  K_pitch * Attitude_Controller.theta_ele
-        roll_com   =  K_roll  * Attitude_Controller.theta_rud
+        roll_com  =  K_roll  * Attitude_Controller.theta_rud
 
         if yaw_com > 1:
             yaw_com = 1
@@ -376,6 +385,7 @@ def Distributing():
         global throttle_com, roll_com, pitch_com, yaw_com, distributing_count, Output_channel_data,\
                 roll_Int, pitch_Int, yaw_Int
         # Output_channel_data[flap_channel] = flap_min_PWM
+        
         Output_channel_data[flap_channel] = (1500 - 500 * throttle_com)
 
 
@@ -398,9 +408,8 @@ def Distributing():
         if here_r < -1:
             here_r = -1
 
-        Output_channel_data[leftwing_channel] = 1500 - 300 * here_p + 400 * here_y
+        Output_channel_data[ele_channel] = 1500 - 500 * here_p 
         Output_channel_data[rudder_channel] = 1500 - 500 * here_r
-        Output_channel_data[rightwing_channel] = 1500 - 300 * here_p - 400 * here_y
         # print('roll_com' + str(roll_com) + 'pitch_com' + str(pitch_com) + 'yaw_com' + str(yaw_com) )
 
         # leftwing_dorsal_PWM = 900
@@ -423,22 +432,20 @@ def Distributing():
         Output_channel_Ex_Max_list = []
         Output_channel_Ex_Min_list = []
 
-        Output_channel_Ex_Max_list.append(leftwing_vental_PWM)
         Output_channel_Ex_Max_list.append(rudder_left_PWM)
         Output_channel_Ex_Max_list.append(flap_min_PWM)
-        Output_channel_Ex_Max_list.append(rightwing_vental_PWM)
+        Output_channel_Ex_Max_list.append(ele_vental_PWM)
 
-        Output_channel_Ex_Min_list.append(leftwing_dorsal_PWM)
         Output_channel_Ex_Min_list.append(rudder_right_PWM)
         Output_channel_Ex_Min_list.append(flap_max_PWM)
-        Output_channel_Ex_Min_list.append(rightwing_dorsal_PWM)
+        Output_channel_Ex_Min_list.append(ele_dorsal_PWM)
 
-        for i in range(4):
+        for i in range(1,4):
                 Output_channel_data[i] = int(Output_channel_data[i])
-                if Output_channel_data[i] < Output_channel_Ex_Min_list[i]:
-                    Output_channel_data[i] = Output_channel_Ex_Min_list[i]
-                if Output_channel_data[i] > Output_channel_Ex_Max_list[i]:
-                    Output_channel_data[i] = Output_channel_Ex_Max_list[i]
+                if Output_channel_data[i] < Output_channel_Ex_Min_list[i-1]:
+                    Output_channel_data[i] = Output_channel_Ex_Min_list[i-1]
+                if Output_channel_data[i] > Output_channel_Ex_Max_list[i-1]:
+                    Output_channel_data[i] = Output_channel_Ex_Max_list[i-1]
         setting = [0, 21, 0, 1, 1, 0, 0, 0]
         op = 6
 
@@ -501,7 +508,7 @@ def Recording():
     record_orientation_list.append(Here_ATG.orientation)
 
     record_time_stamp_list. append(time.time() - start_stamp)
-
+    record_Gamma.append(Gamma)
 
 def sensoring_listen_func():
     schedule.every(Desired_Sensor_gap).seconds.do(Sensoring)
@@ -593,4 +600,5 @@ scio.savemat(Record_file_name, {'record_Sensor_data': record_Sensor_data_list,
                                 'record_Observer_p':record_Observer_p_list,
                                 'record_Observer_v':record_Observer_v_list,
                                 'record_Observer_z':record_Observer_z_list,
-                                'record_u_t':record_u_t_list})
+                                'record_u_t':record_u_t_list,
+                                'record_Gamma':record_Gamma})
