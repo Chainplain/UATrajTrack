@@ -67,8 +67,8 @@ Z_pos_Int = 0
 psi = 0
 
 ### Classes Initialization
-Here_pos_observer = FT_observer(robot_mass = Flapper_Robot_Mass)
-Here_pos_observer. observer_gap = Sensor_gap
+# Here_pos_observer = FT_observer(robot_mass = Flapper_Robot_Mass)
+# Here_pos_observer. observer_gap = Sensor_gap
 
 
 Postion_Controller = UTT_controller( Desired_Controller_gap )
@@ -79,12 +79,14 @@ Attitude_Controller. Control_gap = Controller_gap
 
 
 Flapper_att_filter = FIR_Filter(Identical_rot, [1] * 20, Desired_Sensor_gap)
-Flapper_pos_filter = FIR_Filter(Zero_av, [1] * 5, Desired_Sensor_gap)
+Flapper_vel_filter = FIR_Filter(Zero_av, [1] * 20, Desired_Sensor_gap)
 
 
 Flapper_av_filter = FIR_Filter(Zero_av, [1] * 20, Desired_Sensor_gap)
 
 Angular_velocity_filter = LPSF(Zero_av, 8, 0.8, Desired_Sensor_gap)
+# Flapper_LPSF_pos_filter=  LPSF(Zero_av, 8, 0.8, Desired_Sensor_gap)
+
 
 Flapper_psi_filter = LPSF(0, 8, 0.8, Desired_Sensor_gap)
 
@@ -110,8 +112,8 @@ ele_dorsal_PWM = 900
 ele_vental_PWM = 2100
 ele_channel    = 1
 
-flap_max_PWM = 1000
-flap_min_PWM = 2000
+flap_max_PWM = 1100
+flap_min_PWM = 1900
 flap_channel    = 2
 
 rudder_left_PWM = 2100
@@ -176,13 +178,14 @@ record_com_list = []
 record_Output_channel_data_list = []
 record_R_d_list = []
 record_p_list   = []
+record_v_list   = []
 record_time_stamp_list = []
 record_p_d_list = []
 record_Flapper_att_list = []
 record_Angle_vel_list = []
-record_Observer_p_list = []
-record_Observer_v_list = []
-record_Observer_z_list = []
+# record_Observer_p_list = []
+# record_Observer_v_list = []
+# record_Observer_z_list = []
 record_u_t_list = []
 record_orientation_list = []
 record_Gamma = []
@@ -230,8 +233,11 @@ def Sensoring():
         global Flapper_pos, Flapper_att, Last_pos, Last_att, Sensor_data, throttle_com, sensoring_count, is_fall_flag
         Sensor_data = here_qualisys_con. read_6DEuler_LittleEndian()
         Flapper_pos_origin = Millimeter2Meter_CONSTANT * np.mat([[Sensor_data[0]], [Sensor_data[1]], [Sensor_data[2]]])
-        Flapper_pos_filter.march_forward(Flapper_pos_origin)
+        Flapper_vel_filter.march_forward(1 / Flapper_vel_filter.filter_gap * (Flapper_pos_origin - Flapper_pos))
+        # Flapper_LPSF_pos_filter.march_forward(Flapper_vel_filter.Get_filtered())
         Flapper_pos = Flapper_pos_origin
+
+    
         # here we use the original signal instead of the filtered one, to test
         # if there is something wrong in the filter
 
@@ -256,7 +262,7 @@ def Sensoring():
             -2 < Flapper_pos[0, 0] < 2:
             is_fall_flag = False
 
-        if Flapper_pos[2, 0] < 0.2 or Flapper_pos[2, 0] > 2:
+        if Flapper_pos[2, 0] < 0.4 or Flapper_pos[2, 0] > 2:
             is_fall_flag = True
 
         if Flapper_pos[1, 0] < -5 or Flapper_pos[1, 0] > 5:
@@ -277,7 +283,7 @@ def Sensoring():
 
         u_t_in_body_fixed_frame = np.mat([[0], [0], [Flapper_Robot_Mass * 9.8]])
         u_t_in_inertia_frame = Flapper_att * u_t_in_body_fixed_frame
-        Here_pos_observer.march_forward(u_t_in_inertia_frame, Flapper_pos)
+        # Here_pos_observer.march_forward(u_t_in_inertia_frame, Flapper_pos)
 
 
         sensoring_count += 1
@@ -318,7 +324,7 @@ def Controlling():
         Angle_vel = Angular_velocity_filter.Get_filtered()
 
         Postion_Controller.Calc_u_t(p_d, Flapper_pos,
-                                    v_d, Here_pos_observer.v_observer,
+                                    v_d, Flapper_vel_filter.Get_filtered(),
                                     Flapper_psi_filter.Get_filtered(),Flapper_psi_filter.Get_filtered_D())
         
         GammaP =  np.mat([Postion_Controller.Gamma_xp,
@@ -335,19 +341,25 @@ def Controlling():
         Attitude_Controller.Calc_u(GammaP, Gamma, Flapper_av_filter.Get_filtered())
 
 
-        K_p_throttle_com = 0.6
-        K_d_throttle_com = 1.2
-        K_i_throttle_com = 0.1
-        I_sat = 0.2
+        K_p_throttle_com = 1.5
+        K_d_throttle_com = 0.1
+        K_i_throttle_com = 0.01
+        I_sat = 10
 
         if Z_pos_Int > I_sat:
             Z_pos_Int = I_sat
         if Z_pos_Int < -I_sat:
             Z_pos_Int = -I_sat
 
-        throttle_com = (p_d[2, 0] - Flapper_pos[2, 0]) * K_p_throttle_com\
-                       + (v_d[2, 0] - Here_pos_observer.v_observer[2, 0] ) * K_d_throttle_com +\
-                       Z_pos_Int * K_i_throttle_com
+        position_throttle = (p_d[2, 0] - Flapper_pos[2, 0]) * K_p_throttle_com
+        if position_throttle > 1:
+            position_throttle = 1
+        if position_throttle < -1:
+            position_throttle = -1
+
+        throttle_com = position_throttle+\
+                       (v_d[2, 0] - Flapper_vel_filter.Get_filtered()[2, 0] ) * K_d_throttle_com +\
+                       Z_pos_Int * K_i_throttle_com + 0.2
         
         Z_pos_Int += (p_d[2, 0] - Flapper_pos[2, 0]) * Controller_gap
 
@@ -355,8 +367,8 @@ def Controlling():
 
         if throttle_com > 1:
             throttle_com = 1
-        if throttle_com < 0:
-            throttle_com = 0
+        if throttle_com < -1:
+            throttle_com = -1
 
 
         yaw_com  =  0
@@ -476,8 +488,9 @@ def Analyzing():
         # print('Angular_velocity_filter',Angular_velocity_filter.Get_filtered())
 
         Postion_Controller.Control_gap = Controller_gap
-        Here_pos_observer.observer_gap = Sensor_gap
-
+        # Here_pos_observer.observer_gap = Sensor_gap
+        Flapper_vel_filter.filter_gap = Sensor_gap
+        # Flapper_LPSF_pos_filter.filter_gap = Sensor_gap
 
         # Angular_velocity_filter.filter_gap = Sensor_gap
         #Please be careful to deal with this line.
@@ -494,6 +507,7 @@ def Recording():
     record_Sensor_data_list.append(Sensor_data)
     record_Flapper_att_list.append(Flapper_att)
     record_p_list.append(Flapper_pos)
+    record_v_list.append(Flapper_vel_filter.Get_filtered())
 
     record_com_list.append([throttle_com, roll_com, pitch_com, yaw_com])
     record_Output_channel_data_list.append(Output_channel_data[0:4])
@@ -501,9 +515,6 @@ def Recording():
     record_p_d_list.append(p_d)
     record_Angle_vel_list.append(Angle_vel)
 
-    record_Observer_p_list. append(Here_pos_observer.p_observer)
-    record_Observer_v_list. append(Here_pos_observer.v_observer)
-    record_Observer_z_list. append(Here_pos_observer.z_observer)
     record_u_t_list.append(u_t)
     record_orientation_list.append(Here_ATG.orientation)
 
@@ -597,8 +608,6 @@ scio.savemat(Record_file_name, {'record_Sensor_data': record_Sensor_data_list,
                                 'record_Flapper_att': record_Flapper_att_list,
                                 'record_Angle_vel': record_Angle_vel_list,
                                 'record_p': record_p_list,
-                                'record_Observer_p':record_Observer_p_list,
-                                'record_Observer_v':record_Observer_v_list,
-                                'record_Observer_z':record_Observer_z_list,
+                                'record_v': record_v_list,
                                 'record_u_t':record_u_t_list,
                                 'record_Gamma':record_Gamma})
