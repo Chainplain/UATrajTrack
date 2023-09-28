@@ -18,6 +18,7 @@ from   FTslideControl import Computing_desired_rotation
 
 from   FTslideControl import Under_Traj_Track_Controller as UTT_controller
 from   FTslideControl import Simplified_Att_Controller as SA_controller
+from   readTraj import traj_reader as t_reader
 
 
 from   QualisysConnector import Qualisys_con
@@ -32,6 +33,8 @@ import scipy.io as scio
 hostname = socket.gethostname()
 RecordTime = time.strftime('%Y_%m_%d_%H_%M_%S', time.localtime(time.time()))
 Record_file_name = hostname + '_' + RecordTime + 'UFlapperInMocap.mat'
+
+T_reader = t_reader('line.mat')
 
 Program_life_length = 40 # in seconds
 
@@ -53,6 +56,12 @@ Distribute_gap =  Desired_Distribute_gap
 
 start_stamp    = time.time()
 last_analyzing_stamp = start_stamp
+has_tracked = False
+
+
+
+Start_tracking_time = 3.0
+Start_tracking_position =np.mat([[0.0],[0.0],[0.0]])
 
 
 Flapper_Robot_Mass     =  0.029
@@ -129,8 +138,8 @@ MultiProtocol_ser = serial.Serial(
         bytesize=serial.EIGHTBITS
     )
 
-K_roll = 0.3
-K_pitch = 0.3
+K_roll = 0.4
+K_pitch = 0.4
 K_yaw = 1
 
 #distributing
@@ -155,7 +164,9 @@ Sensor_data = [0.0] * 6
 Output_channel_data = [1500.0] * 16
 Output_channel_data[2] = 1000  # set throttle low
 
-p_d = np.mat([  [0.0], [0.0], [0.0]])
+p_d = np.mat([  [0.0], [0.0], [1.5]])
+v_d = np.mat([  [0.0], [0.0], [0.0]])
+
 u_t = np.mat([  [0.0], [0.0], [0.0]])
 Flapper_pos = np.mat([  [0.0], [0.0], [0.0]])
 Flapper_att = np.mat([  [1.0, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]])
@@ -189,17 +200,19 @@ record_Angle_vel_list = []
 record_u_t_list = []
 record_orientation_list = []
 record_Gamma = []
+record_Gammap = []
+record_psi_list = []
 
 Here_ATG = ATG(R_d, omega_d, Desired_Controller_gap)
 
 def Warm_up_vehicle():
-    Warm_up_max_PWM = 1200
-    Warm_up_min_PWM = 1800
+    Warm_up_max_PWM = 1250
+    Warm_up_min_PWM = 1850
     # rightwing_channel = 2
 
     setting = [0, 21, 0, 1, 1, 0, 0, 0]
     op = 6
-    Duration = 100
+    Duration = 80
     print('Warming up!!')
     print('Low flap!!')
     for i in range(0, Duration):
@@ -253,8 +266,8 @@ def Sensoring():
 
         Pi = Flapper_att * e_13
 
-        Flapper_psi = np.arctan2(Pi[0,0], Pi[1,0])
-        Flapper_psi_filter.march_forward(Flapper_psi)
+        Flapper_psi = np.arctan2( Pi[1,0],Pi[0,0])
+        Flapper_psi_filter. march_forward(Flapper_psi)
 
         if is_fall_flag and \
            0.5 < Flapper_pos[2, 0] < 2 and \
@@ -265,7 +278,7 @@ def Sensoring():
         if Flapper_pos[2, 0] < 0.4 or Flapper_pos[2, 0] > 2:
             is_fall_flag = True
 
-        if Flapper_pos[1, 0] < -5 or Flapper_pos[1, 0] > 5:
+        if Flapper_pos[1, 0] < -2.5 or Flapper_pos[1, 0] > 2.5:
             is_fall_flag = True
 
         if Flapper_pos[0, 0] < -3 or Flapper_pos[0, 0] > 3:
@@ -292,7 +305,8 @@ def Controlling():
         # Circular Flight
         global throttle_com, roll_com, pitch_com, yaw_com,\
             roll_Int, pitch_Int, yaw_Int,\
-            controlling_count, R_d, p_d, Angle_vel, u_t, Z_pos_Int, Gamma
+            controlling_count, R_d, p_d,v_d, Angle_vel, u_t, Z_pos_Int,\
+            Gamma, GammaP,has_tracked,Start_tracking_position
         current_stamp = time.time()
 
         # k_rate = 1
@@ -302,6 +316,8 @@ def Controlling():
         # d_v_d_z = 0
         #
         Here_time = current_stamp - start_stamp
+
+        track_time =  Here_time - Start_tracking_time
         #
         # p_d_x = - k_rate * np.cos(np.pi * t_rate * Here_time) + k_rate
         # p_d_y = k_rate * np.sin(np.pi * t_rate * Here_time)
@@ -316,34 +332,44 @@ def Controlling():
         # v_d = np.mat([[v_d_x], [v_d_y], [v_d_z]])
         # d_v_d = np.mat([[d_v_d_x], [d_v_d_y], [d_v_d_z]])
 
-        p_d = np.mat([[0], [0], [1.5]])
-        v_d = np.mat([[0], [0], [0]])
+        
   
 
 
         Angle_vel = Angular_velocity_filter.Get_filtered()
+        if T_reader.get_x_pos(track_time) is not None:
+            if not has_tracked:
+                print('Start tracking!!')
+                Start_tracking_position = Flapper_pos
+                has_tracked = True
 
-        Postion_Controller.Calc_u_t(p_d, Flapper_pos,
+            p_d = Start_tracking_position + np.mat([[T_reader.get_x_pos(track_time)],\
+                                                    [T_reader.get_y_pos(track_time)], \
+                                                    [T_reader.get_z_pos(track_time)]])
+            v_d = np.mat([[T_reader.get_x_vel(track_time)],\
+                          [T_reader.get_y_vel(track_time)], \
+                          [T_reader.get_z_vel(track_time)]])
+            Postion_Controller.Calc_u_t(p_d, Flapper_pos,
                                     v_d, Flapper_vel_filter.Get_filtered(),
                                     Flapper_psi_filter.Get_filtered(),Flapper_psi_filter.Get_filtered_D())
-        
-        GammaP =  np.mat([Postion_Controller.Gamma_xp,
-                          Postion_Controller.Gamma_yp,
-                          Postion_Controller.Gamma_zp]).T
-        
+   
+            GammaP =  np.mat([Postion_Controller.Gamma_xp,
+                            -Postion_Controller.Gamma_yp,
+                            Postion_Controller.Gamma_zp]).T
+        else:
+            GammaP = np.mat([0, 0 ,1]).T # This line is used for testing the pure reduced attitude controller
+            v_d = np.mat([  [0.0], [0.0], [0.0]])
+        #positive turning right
+        #negative turning left
+        GammaP = 1 / np.linalg.norm(GammaP) * GammaP
         Gamma = Flapper_att.T * np.mat([0,0,1]).T
 
-        
-        
-        GammaP = np.mat([0,0.4,1]).T # This line is used for testing the pure reduced attitude controller
-        GammaP = 1 / np.linalg.norm(GammaP) * GammaP
-        
         Attitude_Controller.Calc_u(GammaP, Gamma, Flapper_av_filter.Get_filtered())
 
 
-        K_p_throttle_com = 1.5
-        K_d_throttle_com = 0.1
-        K_i_throttle_com = 0.01
+        K_p_throttle_com = 1.6#1.5
+        K_d_throttle_com = 0.3#0.2
+        K_i_throttle_com = 0
         I_sat = 10
 
         if Z_pos_Int > I_sat:
@@ -462,7 +488,7 @@ def Distributing():
         op = 6
 
         if is_fall_flag:
-                Output_channel_data[flap_channel] = flap_min_PWM
+                Output_channel_data[flap_channel] = 2000
 
         # Output_channel_data[flap_channel] = flap_min_PWM
 
@@ -482,6 +508,12 @@ def Analyzing():
         Controller_gap = elapsed_analyzing_time / controlling_count
         Sensor_gap     = elapsed_analyzing_time / sensoring_count
         Distribute_gap = elapsed_analyzing_time / distributing_count
+
+        if Controller_gap < Desired_Controller_gap:
+            Controller_gap = Desired_Controller_gap
+        if Sensor_gap < Desired_Sensor_gap:
+            Sensor_gap = Desired_Sensor_gap
+
 
         print('INFO:Sensor_gap: '+ str(Sensor_gap) + ', Controller_gap: '+ str(Controller_gap) +\
               ', Distribute_gap: ' + str(Distribute_gap))
@@ -520,6 +552,8 @@ def Recording():
 
     record_time_stamp_list. append(time.time() - start_stamp)
     record_Gamma.append(Gamma)
+    record_Gammap.append(GammaP)
+    record_psi_list.append(Flapper_psi_filter.Get_filtered())
 
 def sensoring_listen_func():
     schedule.every(Desired_Sensor_gap).seconds.do(Sensoring)
@@ -610,4 +644,6 @@ scio.savemat(Record_file_name, {'record_Sensor_data': record_Sensor_data_list,
                                 'record_p': record_p_list,
                                 'record_v': record_v_list,
                                 'record_u_t':record_u_t_list,
-                                'record_Gamma':record_Gamma})
+                                'record_Gamma':record_Gamma,
+                                'record_Gammap':record_Gammap,
+                                'record_psi':record_psi_list})

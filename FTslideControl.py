@@ -54,10 +54,10 @@ class Finite_time_slide_mode_observer_3dim():
 class Under_Traj_Track_Controller():
     def __init__(self, con_gap):
         self. Control_gap = con_gap
-        self. K_p  = 1 * np.matrix([[1,0,0],\
+        self. K_p  = 0.5 * np.matrix([[1,0,0],\
                                    [0,1,0],\
                                    [0,0,1]])
-        self. K_v  = 1 * np.matrix([[1,0,0],\
+        self. K_v  = 3 * np.matrix([[1,0,0],\
                                    [0,1,0],\
                                    [0,0,1]])
         self. K_p_inv = np.linalg.inv (self. K_p)
@@ -77,8 +77,8 @@ class Under_Traj_Track_Controller():
         """
 
         self. k_psi = 1
-        self. k_Gamma1 = 1
-        self. k_Gamma2 = 1
+        self. k_Gamma1 = 0.5
+        self. k_Gamma2 = 0.5
         self. k_omega = 1
         self. Zero_3 = np.matrix([[0.0],[0.0],[0.0]])
         self. v_d_filter = LPSF(self. Zero_3, 8, 0.8, con_gap)
@@ -93,12 +93,12 @@ class Under_Traj_Track_Controller():
         self. Gamma_xp = 0
         self. Gamma_yp = 0
         self. Gamma_zp = 1
-        self. max_abs_Gamma_x = 0.3
-        self. max_abs_Gamma_y = 0.3
+        self. max_abs_Gamma_x = 0.25
+        self. max_abs_Gamma_y = 0.35
 
     def Calc_u_t(self, p_r, p, v_r, v, psi, omega_psi ):
         e_p = p_r - p
-        v_d = v_r + self. K_p * np.tanh (e_p)
+        v_d = v_r + self. K_p * np.tanh (0.1 * e_p)
         e_v = v_d - v
 
         R_psi = np.mat( [[np.cos(psi), -np.sin(psi),          0],\
@@ -112,13 +112,14 @@ class Under_Traj_Track_Controller():
 
         self. v_d_filter.march_forward(v_d)
         d_v_d = self. v_d_filter.Get_filtered_D()
-        a_d = d_v_d +self. K_v * self. K_p_inv * np.tanh (e_p) + self. K_v * np.tanh(e_v)
+        a_d = d_v_d +self. K_v * self. K_p_inv * np.tanh (0.5 * e_p) + self. K_v * np.tanh(e_v)
 
         a_xd = a_d[0,0]
         a_yd = a_d[1,0]
         a_zd = a_d[2,0]
 
         psi_d = np.arctan2( a_yd, a_xd)
+        # print('psi_d',psi_d)
         V_d_v_xd = np.sqrt( a_xd * a_xd + a_yd * a_yd)
         V_d_v_zd = a_zd
 
@@ -129,18 +130,25 @@ class Under_Traj_Track_Controller():
         self. f_flap_2 = self. k_tf_inv_multi_m * d_v_magnitude
 
         Gamma_xd = d_v_cx / d_v_magnitude
-        if abs(Gamma_xd) > self. max_abs_Gamma_x:
-            Gamma_xd = self. max_abs_Gamma_x * np.sign(Gamma_xd)
+        if Gamma_xd > self. max_abs_Gamma_x:
+            Gamma_xd = self. max_abs_Gamma_x
+        
+        if Gamma_xd < -0.2 * self. max_abs_Gamma_x:
+            Gamma_xd = -0.2 * self. max_abs_Gamma_x
 
         Gamma_zd = np.sqrt(1 - Gamma_xd**2)
 
         delta_psi = psi_d - psi
+        # print('delta_psi',delta_psi)
 
         if np.cos( delta_psi ) > 0:
             self. h_psi = np.sign ( np.sin( delta_psi ) )
+            if self. h_psi  == 0:
+                self. h_psi = 1
         
         if np.cos( delta_psi ) <= 0 and self. h_psi * np.sin( delta_psi ) <= - self. delta:
             self. h_psi = np.sign ( np.sin( delta_psi ) )
+        # print('self. h_psi',self. h_psi)
 
         self. psi_d_filter. march_forward(psi_d)
         d_psi_d = self. psi_d_filter.Get_filtered_D()
@@ -148,10 +156,11 @@ class Under_Traj_Track_Controller():
         self. omega_psi_d_filter. march_forward (d_psi_d)
 
         omega_psi_d = self. omega_psi_d_filter.Get_filtered() + self. k_psi * self. h_psi * np. sqrt( 1 - np.cos( delta_psi))
+        # print('omega_psi_d',omega_psi_d)
 
-        Gamma_yd = self. k_Gamma1 * np.sign(omega_psi_d - omega_psi) * np.abs ( 0.5 * self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
-                 + self. k_Gamma2 *   ( 0.5 *  self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
-                 + self.k_omega * ( omega_psi_d - omega_psi )
+        Gamma_yd = self. k_Gamma1  * (  np.sign ( np.sin( delta_psi ) ) * np. sqrt( 1 - np.cos( delta_psi)) )
+                #  + self. k_Gamma2 *   ( 0.5 *  self. h_psi * np. sqrt( 1 - np.cos( delta_psi)) / self. k_psi +  self. omega_psi_d_filter.Get_filtered_D())\
+                 
         if abs(Gamma_yd) > self. max_abs_Gamma_y:
             Gamma_yd = self. max_abs_Gamma_y * np.sign(Gamma_yd)
 
