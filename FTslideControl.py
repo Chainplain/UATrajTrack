@@ -54,7 +54,7 @@ class Finite_time_slide_mode_observer_3dim():
 class Under_Traj_Track_Controller():
     def __init__(self, con_gap):
         self. Control_gap = con_gap
-        self. K_p  = 0.5 * np.matrix([[1,0,0],\
+        self. K_p  = 1 * np.matrix([[1,0,0],\
                                    [0,1,0],\
                                    [0,0,1]])
         self. K_v  = 3 * np.matrix([[1,0,0],\
@@ -64,7 +64,7 @@ class Under_Traj_Track_Controller():
 
         self. k_tf_inv_multi_m = 1
         
-        self. k_dx_in_V = 0.1 
+        self. k_dx_in_V = 0.02 
         """
         This coefficient is based on experiment. \n 
         Corresponding to the resistance force. This coef can be set small in case of unintended behavior.
@@ -77,7 +77,7 @@ class Under_Traj_Track_Controller():
         """
 
         self. k_psi = 1
-        self. k_Gamma1 = 0.5
+        self. k_Gamma1 = 1
         self. k_Gamma2 = 0.5
         self. k_omega = 1
         self. Zero_3 = np.matrix([[0.0],[0.0],[0.0]])
@@ -94,7 +94,7 @@ class Under_Traj_Track_Controller():
         self. Gamma_yp = 0
         self. Gamma_zp = 1
         self. max_abs_Gamma_x = 0.25
-        self. max_abs_Gamma_y = 0.35
+        self. max_abs_Gamma_y = 0.4
 
     def Calc_u_t(self, p_r, p, v_r, v, psi, omega_psi ):
         e_p = p_r - p
@@ -112,13 +112,16 @@ class Under_Traj_Track_Controller():
 
         self. v_d_filter.march_forward(v_d)
         d_v_d = self. v_d_filter.Get_filtered_D()
-        a_d = d_v_d +self. K_v * self. K_p_inv * np.tanh (0.5 * e_p) + self. K_v * np.tanh(e_v)
+        a_d = d_v_d +self. K_v * self. K_p_inv * np.tanh (0.5 * e_p) + self. K_v * np.tanh( e_v)
 
         a_xd = a_d[0,0]
         a_yd = a_d[1,0]
         a_zd = a_d[2,0]
 
-        psi_d = np.arctan2( a_yd, a_xd)
+        if np.linalg.norm(e_p) < 0.2:
+            psi_d = np.arctan2( v_r[1,0], v_r[0,0])
+        else:
+            psi_d = np.arctan2( a_yd, a_xd)
         # print('psi_d',psi_d)
         V_d_v_xd = np.sqrt( a_xd * a_xd + a_yd * a_yd)
         V_d_v_zd = a_zd
@@ -172,10 +175,10 @@ class Under_Traj_Track_Controller():
 class Simplified_Att_Controller():
     def __init__(self, con_gap):
         self. Control_gap = con_gap
-        self. k_rud = 4
-        self. k_ele = 4
-        self. k_rud_omega = 0.5
-        self. k_ele_omega = 0.5
+        self. k_rud = 3
+        self. k_ele = 3
+        self. k_rud_omega = 1
+        self. k_ele_omega = 1
         
         self. theta_rud = 0
         self. theta_ele = 0

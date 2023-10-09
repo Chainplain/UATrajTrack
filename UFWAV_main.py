@@ -34,9 +34,9 @@ hostname = socket.gethostname()
 RecordTime = time.strftime('%Y_%m_%d_%H_%M_%S', time.localtime(time.time()))
 Record_file_name = hostname + '_' + RecordTime + 'UFlapperInMocap.mat'
 
-T_reader = t_reader('line.mat')
+T_reader = t_reader('ball_obstraction_hcr_pi.mat')
 
-Program_life_length = 40 # in seconds
+Program_life_length = 30.0 # in seconds
 
 Millimeter2Meter_CONSTANT = 0.001
 SELF_HOLD_FLAPPING_FREQ = 14
@@ -117,16 +117,16 @@ here_qualisys_con. start_listening()
 
 ### in the real RC channel is 1, always plus 1, these value should be checked by real experiment.
 
-ele_dorsal_PWM = 900
-ele_vental_PWM = 2100
+ele_dorsal_PWM = 1000
+ele_vental_PWM = 2000
 ele_channel    = 1
 
-flap_max_PWM = 1100
-flap_min_PWM = 1900
+flap_max_PWM = 1000
+flap_min_PWM = 2000
 flap_channel    = 2
 
-rudder_left_PWM = 2100
-rudder_right_PWM = 900
+rudder_left_PWM = 2000
+rudder_right_PWM = 1000
 rudder_channel    = 3
 
 
@@ -138,8 +138,8 @@ MultiProtocol_ser = serial.Serial(
         bytesize=serial.EIGHTBITS
     )
 
-K_roll = 0.4
-K_pitch = 0.4
+K_roll = 0.5
+K_pitch = 0.5
 K_yaw = 1
 
 #distributing
@@ -164,7 +164,7 @@ Sensor_data = [0.0] * 6
 Output_channel_data = [1500.0] * 16
 Output_channel_data[2] = 1000  # set throttle low
 
-p_d = np.mat([  [0.0], [0.0], [1.5]])
+p_d = np.mat([  [0.0], [0.0], [1.0]])
 v_d = np.mat([  [0.0], [0.0], [0.0]])
 
 u_t = np.mat([  [0.0], [0.0], [0.0]])
@@ -270,18 +270,18 @@ def Sensoring():
         Flapper_psi_filter. march_forward(Flapper_psi)
 
         if is_fall_flag and \
-           0.5 < Flapper_pos[2, 0] < 2 and \
-            -2 < Flapper_pos[1, 0] < 2 and \
-            -2 < Flapper_pos[0, 0] < 2:
+           0.3 < Flapper_pos[2, 0] < 4 and \
+            -2 < Flapper_pos[1, 0] < 3 and \
+            -3 < Flapper_pos[0, 0] < 6:
             is_fall_flag = False
 
-        if Flapper_pos[2, 0] < 0.4 or Flapper_pos[2, 0] > 2:
+        if Flapper_pos[2, 0] < 0.3 or Flapper_pos[2, 0] > 4:
             is_fall_flag = True
 
-        if Flapper_pos[1, 0] < -2.5 or Flapper_pos[1, 0] > 2.5:
+        if Flapper_pos[1, 0] < -2.5 or Flapper_pos[1, 0] > 3:
             is_fall_flag = True
 
-        if Flapper_pos[0, 0] < -3 or Flapper_pos[0, 0] > 3:
+        if Flapper_pos[0, 0] < -3 or Flapper_pos[0, 0] > 6:
             is_fall_flag = True
 
 
@@ -341,6 +341,7 @@ def Controlling():
             if not has_tracked:
                 print('Start tracking!!')
                 Start_tracking_position = Flapper_pos
+                print('Start_tracking_position:',Start_tracking_position)
                 has_tracked = True
 
             p_d = Start_tracking_position + np.mat([[T_reader.get_x_pos(track_time)],\
@@ -367,10 +368,10 @@ def Controlling():
         Attitude_Controller.Calc_u(GammaP, Gamma, Flapper_av_filter.Get_filtered())
 
 
-        K_p_throttle_com = 1.6#1.5
-        K_d_throttle_com = 0.3#0.2
-        K_i_throttle_com = 0
-        I_sat = 10
+        K_p_throttle_com = 1.5#1.5
+        K_d_throttle_com = 0.25#0.2
+        K_i_throttle_com = 0.001
+        I_sat = 0.1
 
         if Z_pos_Int > I_sat:
             Z_pos_Int = I_sat
@@ -383,11 +384,14 @@ def Controlling():
         if position_throttle < -1:
             position_throttle = -1
 
+        observed_vz_d = Flapper_vel_filter.Get_filtered()[2, 0]
+        if np.abs(observed_vz_d) > 2:
+            observed_vz_d = np.sign(observed_vz_d) * 2
         throttle_com = position_throttle+\
-                       (v_d[2, 0] - Flapper_vel_filter.Get_filtered()[2, 0] ) * K_d_throttle_com +\
-                       Z_pos_Int * K_i_throttle_com + 0.2
+                       (v_d[2, 0] - observed_vz_d ) * K_d_throttle_com +\
+                       0.001 * Z_pos_Int  + 0.2
         
-        Z_pos_Int += (p_d[2, 0] - Flapper_pos[2, 0]) * Controller_gap
+        Z_pos_Int += (p_d[2, 0] - Flapper_pos[2, 0]) * Controller_gap * K_i_throttle_com
 
        
 
