@@ -14,3 +14,10 @@ for i =1:3
         title('velocity');
 end
 
+cut = 330:800;
+figure; 
+plot3(record_p(cut,1),record_p(cut,2),record_p(cut,3));
+hold on;
+plot3(record_p(cut(1),1),record_p(cut(1),2),record_p(cut(1),3),'o');
+axis equal;
+

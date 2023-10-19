@@ -34,7 +34,7 @@ hostname = socket.gethostname()
 RecordTime = time.strftime('%Y_%m_%d_%H_%M_%S', time.localtime(time.time()))
 Record_file_name = hostname + '_' + RecordTime + 'UFlapperInMocap.mat'
 
-T_reader = t_reader('ball_obstraction_hcr_pi.mat')
+T_reader = t_reader('line.mat')
 
 Program_life_length = 30.0 # in seconds
 
@@ -164,7 +164,7 @@ Sensor_data = [0.0] * 6
 Output_channel_data = [1500.0] * 16
 Output_channel_data[2] = 1000  # set throttle low
 
-p_d = np.mat([  [0.0], [0.0], [1.0]])
+p_d = np.mat([  [0.0], [0.0], [1.5]])
 v_d = np.mat([  [0.0], [0.0], [0.0]])
 
 u_t = np.mat([  [0.0], [0.0], [0.0]])
@@ -206,8 +206,8 @@ record_psi_list = []
 Here_ATG = ATG(R_d, omega_d, Desired_Controller_gap)
 
 def Warm_up_vehicle():
-    Warm_up_max_PWM = 1250
-    Warm_up_min_PWM = 1850
+    Warm_up_max_PWM = 1100
+    Warm_up_min_PWM = 1900
     # rightwing_channel = 2
 
     setting = [0, 21, 0, 1, 1, 0, 0, 0]
@@ -354,7 +354,7 @@ def Controlling():
                                     v_d, Flapper_vel_filter.Get_filtered(),
                                     Flapper_psi_filter.Get_filtered(),Flapper_psi_filter.Get_filtered_D())
    
-            GammaP =  np.mat([Postion_Controller.Gamma_xp,
+            GammaP =  np.mat([Postion_Controller.Gamma_xp,##This is not validated yet
                             -Postion_Controller.Gamma_yp,
                             Postion_Controller.Gamma_zp]).T
         else:
@@ -368,7 +368,7 @@ def Controlling():
         Attitude_Controller.Calc_u(GammaP, Gamma, Flapper_av_filter.Get_filtered())
 
 
-        K_p_throttle_com = 1.5#1.5
+        K_p_throttle_com = 2#1.5
         K_d_throttle_com = 0.25#0.2
         K_i_throttle_com = 0.001
         I_sat = 0.1
