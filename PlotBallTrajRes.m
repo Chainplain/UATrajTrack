@@ -80,3 +80,33 @@ legend('Reference Z pos.','Real Z pos.');
 
 set(gcf, 'Position', [100 100 600 450]); 
 
+TheCut = record_time_stamp(Cut)-StartSec;
+
+X_error = double(pos_x_res(TheCut))' -...
+            ((record_p(Cut,1)-record_p(Front,1)));
+% X_error_abs = abs(X_error);        
+        
+Y_error = double(pos_y_res(TheCut))' -...
+            ((record_p(Cut,2)-record_p(Front,2)));
+% Y_error_abs = abs(Y_error);
+
+Z_error = double(pos_z_res(TheCut))' -...
+            ((record_p(Cut,3)-record_p(Front,3)));
+Z_error_abs = abs(Z_error);
+
+x_vel_s = double(vel_x_res(TheCut))';
+y_vel_s = double(vel_y_res(TheCut))';
+
+theta_s = atan2(x_vel_s, y_vel_s);
+
+along_error = X_error .* cos(theta_s) + Y_error .* sin(theta_s);
+cross_error = - X_error .* sin(theta_s) + Y_error .* cos(theta_s);
+
+disp('Along track error MAX'+string(max(abs(along_error))) );
+disp('Along track error RMS'+string(rms(abs(along_error))) );
+
+disp('Cross track error MAX'+string(max(abs(cross_error))) );
+disp('Cross track error RMS'+string(rms(abs(cross_error))) );
+
+disp('Altitude error MAX'+string(max(Z_error_abs)) );
+disp('Altitude error RMS'+string(rms(Z_error_abs)) );

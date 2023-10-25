@@ -68,6 +68,10 @@ axis equal;
 figure;
 curve_width = 1.2;
 
+x_error_all = [];
+y_error_all = [];
+z_error_all = [];
+
 for i = 1:3
     load(Threename{i});
     StartSec = 3;
@@ -85,6 +89,10 @@ for i = 1:3
     x = record_p(Cut,1)-record_p(Front,1);
     y = record_p(Cut,2)-record_p(Front,2);
     z = record_p(Cut,3)-record_p(Front,3);
+    
+    x_error_all = [x_error_all; x - 0.5 * (record_time_stamp(Cut)-StartSec)'];
+    y_error_all = [y_error_all; y];
+    z_error_all = [z_error_all; z];
     subplot(3,1,1); 
     hold on;
     % p1=plot(time_secs, x_pos,'--', 'Linewidth', curve_width_ref, 'color', red_color);
@@ -130,3 +138,12 @@ end
 % legend([p1,p3],'Reference Z pos.','Real Z pos.');
 
 set(gcf, 'Position', [100 100 600 450]); 
+
+disp('Along track error MAX'+string(max(abs(x_error_all))) );
+disp('Along track error RMS'+string(rms(abs(x_error_all))) );
+
+disp('Cross track error MAX'+string(max(abs(y_error_all))) );
+disp('Cross track error RMS'+string(rms(abs(y_error_all))) );
+
+disp('Altitude error MAX'+string(max(abs(z_error_all))) );
+disp('Altitude error RMS'+string(rms(abs(z_error_all))) );  
